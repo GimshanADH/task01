@@ -1,0 +1,133 @@
+#include <WiFi.h>
+#if CONFIG_FREERTOS_UNICORE
+static const BaseType_t app_cpu = 0;
+#else
+static const BaseType_t app_cpu = 1;
+#endif
+
+const char* wifiid = "EN20412852";
+const char* wifipassword = "12345678";
+
+WiFiServer server(80);
+
+String header;
+
+String State_of_output_26 = "off";
+String State_of_output_27 = "off";
+
+unsigned long currentTime = millis();
+unsigned long previousTime = 0; 
+const long timeoutTime = 2000;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(26, OUTPUT);
+  pinMode(27, OUTPUT);
+  digitalWrite(26, LOW);
+  digitalWrite(27, LOW);
+
+  xTaskCreatePinnedToCore(Task,"Task for connect hotspot",10000,NULL,1,NULL,0);
+  xTaskCreatePinnedToCore(Task2,"task for web server",10000,NULL,1,NULL,1); 
+}
+void Task(void *parameters) {
+    Serial.println("...starting...");
+
+    WiFi.begin(wifiid, wifipassword);
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println("");
+    Serial.println("completed");
+    Serial.print("connected to  : ");
+    Serial.println(wifiid);
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    vTaskDelete(NULL);
+}
+void Task2 (void *parameters) {
+
+  server.begin();
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    vTaskDelete(NULL);
+}
+void loop(){
+  WiFiClient client = server.available();  
+
+  if (client) {      
+    currentTime = millis();
+    previousTime = currentTime;
+    String currentLine = "";           
+    while (client.connected() && currentTime - previousTime <= timeoutTime) {  
+      currentTime = millis();
+      if (client.available()) {        
+        char c = client.read();      
+        Serial.write(c);      
+        header += c;
+        if (c == '\n') {  
+          if (currentLine.length() == 0) {
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-type:text/html");
+            client.println("Connection: close");
+            client.println();
+
+            if (header.indexOf("GET /26/on") >= 0) {
+              Serial.println("LED 1 on");
+              State_of_output_26 = "on";
+              digitalWrite(26, HIGH);
+            } else if (header.indexOf("GET /26/off") >= 0) {
+              Serial.println("LED 1 off");
+              State_of_output_26 = "off";
+              digitalWrite(26, LOW);
+            } else if (header.indexOf("GET /27/on") >= 0) {
+              Serial.println("LED 2 on");
+              State_of_output_27 = "on";
+              digitalWrite(27, HIGH);
+            } else if (header.indexOf("GET /27/off") >= 0) {
+              Serial.println("LED 2 off");
+              State_of_output_27 = "off";
+              digitalWrite(27, LOW);
+            }
+            
+            client.println("<!DOCTYPE html><html>");
+            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+            client.println("<link rel=\"icon\" href=\"data:,\">");
+            client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
+            client.println(".button { background-color: #4CAF50; border: none; color: white; padding: 16px 40px;");
+            client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
+            client.println(".button2 {background-color: #555555;}</style></head>");
+            
+            client.println("<body><h1>EN20412852 CONTROLLER</h1>");
+             
+            client.println("<p>LED 1</p>");      
+            if (State_of_output_26=="off") {
+              client.println("<p><a href=\"/26/on\"><button class=\"button\">Press for ON</button></a></p>");
+            } else {
+              client.println("<p><a href=\"/26/off\"><button class=\"button button2\">Press for OFF</button></a></p>");
+            } 
+             
+            client.println("<p>LED 2</p>");     
+            if (State_of_output_27=="off") {
+              client.println("<p><a href=\"/27/on\"><button class=\"button\">press for ON</button></a></p>");
+            } else {
+              client.println("<p><a href=\"/27/off\"><button class=\"button button2\">Press for OFF</button></a></p>");
+            }
+            client.println("</body></html>");
+            
+            client.println();
+            break;
+          } else { 
+            currentLine = "";
+          }
+        } else if (c != '\r') {
+          currentLine += c;
+        }
+      }
+    }
+    header = "";
+    client.stop();
+    Serial.println("");
+  }
+}
