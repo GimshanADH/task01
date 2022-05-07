@@ -1,0 +1,44 @@
+void task1( void * parameter );
+void task2( void * parameter );
+
+int delay_time=200;
+char input;
+String tmp;
+
+void setup() {
+  Serial.begin(115200); 
+  pinMode (2,OUTPUT);
+  xTaskCreate(task1,"Task1",2048,NULL,1,NULL);
+  xTaskCreate(task2,"Task2",2048,NULL,1,NULL);
+}
+
+void loop(){
+
+}
+
+void task1( void * parameter ){
+  while(1){
+    if(Serial.available()>0){
+        input = Serial.read();
+        tmp=tmp+input; 
+        delay_time=tmp.toInt();
+    }else{
+      vTaskDelay(100 / portTICK_PERIOD_MS);
+      tmp="";
+    }
+  }
+}
+void task2( void * parameter ){
+ 
+  while(1){
+    
+    digitalWrite(2,HIGH);
+    Serial.println("Turning on the LED");
+    vTaskDelay(delay_time / portTICK_PERIOD_MS);
+    
+    digitalWrite(2,LOW); 
+    Serial.println("Turning off the LED");   
+    vTaskDelay(delay_time / portTICK_PERIOD_MS);
+  }
+    
+}
